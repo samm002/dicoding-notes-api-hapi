@@ -1,6 +1,6 @@
 const { nanoid } = require('nanoid');
 const { Pool } = require('pg');
-const InvariantError = require('../../exceptions/InvarianError');
+const InvariantError = require('../../exceptions/InvariantError');
 const mapDBToModel = require('../../utils');
 
 class NotesService {
