@@ -1,5 +1,4 @@
 node_modules
 *.txt
 *.env
-.prod.env
 src/api/uploads/file
