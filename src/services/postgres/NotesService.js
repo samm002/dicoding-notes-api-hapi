@@ -6,9 +6,10 @@ const NotFoundError = require('../../exceptions/NotFoundError');
 const mapDBToModel = require('../../utils');
 
 class NotesService {
-  constructor(collaborationService) {
+  constructor(collaborationService, cacheService) {
     this._pool = new Pool();
     this._collaborationService = collaborationService;
+    this._cacheService = cacheService;
   }
 
   async addNote({
@@ -29,21 +30,35 @@ class NotesService {
       throw new InvariantError('Catatan gagal ditambahkan');
     }
 
+    await this._cacheService.delete(`notes:${owner}`);
+
     return result.rows[0].id;
   }
 
   async getNotes(owner) {
-    const query = {
-      text: `SELECT * FROM notes 
-      LEFT JOIN collaborations ON collaborations.note_id = notes.id
-      WHERE notes.owner = $1 OR collaborations.user_id = $1
-      GROUP BY collaborations.id, notes.id`,
-      values: [owner],
-    };
+    try {
+      // Mencoba mendapatkan data dari cache
+      const result = await this._cacheService.get(`notes:${owner}`);
+      return JSON.parse(result);
+    } catch (error) {
+      // Jika data dalam cache tidak ditemukan, dapatkan data dari database
+      const query = {
+        text: `SELECT * FROM notes 
+        LEFT JOIN collaborations ON collaborations.note_id = notes.id
+        WHERE notes.owner = $1 OR collaborations.user_id = $1
+        GROUP BY collaborations.id, notes.id`,
+        values: [owner],
+      };
 
-    const result = await this._pool.query(query);
+      const result = await this._pool.query(query);
 
-    return result.rows.map(mapDBToModel);
+      const mappedResult = result.rows.map(mapDBToModel);
+
+      // Simpan data ke dalam cache
+      await this._cacheService.set(`notes:${owner}`, JSON.stringify(mappedResult));
+
+      return mappedResult;
+    }
   }
 
   async getNoteById(id) {
@@ -77,6 +92,10 @@ class NotesService {
       throw new InvariantError('Gagal memperbarui catatan. Id tidak ditemukan');
     }
 
+    const { owner } = result.rows[0];
+
+    await this._cacheService.delete(`notes:${owner}`);
+
     return result.rows.map(mapDBToModel)[0];
   }
 
@@ -91,6 +110,10 @@ class NotesService {
     if (!result.rows.length) {
       throw new InvariantError('Catatan gagal dihapus. Id tidak ditemukan');
     }
+
+    const { owner } = result.rows[0];
+
+    await this._cacheService.delete(`notes:${owner}`);
 
     return result.rows.map(mapDBToModel)[0];
   }
